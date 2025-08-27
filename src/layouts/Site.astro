@@ -31,9 +31,9 @@ const { title } = Astro.props;
 
     <link rel="stylesheet" href={siteCss} />
   </head>
-    <body>
+  <body>
     <slot />
-    <!-- built, hashed asset with correct MIME -->
-    <script type="module" src={entrySrc}></script>
+    <!-- serve real files from /public/scripts -->
+    <script type="module" src="/scripts/main.js"></script>
   </body>
 </html>
