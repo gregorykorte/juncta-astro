@@ -91,48 +91,61 @@ function attr(s) { return String(s).replaceAll('"', "&quot;"); }
 
 /* ---------- source mnemonics ---------- */
 
+/* ---------- source mnemonics (Bloomberg-style) ---------- */
+
 function abbrevSource(src = "", url = "") {
   const s = String(src).trim();
   const u = String(url).trim();
   const host = hostname(u);
 
-  // TV/Radio: prefer call letters or familiar brand
-  if (/local\s*12/i.test(s) || /wkrc/i.test(s) || /wkrc/i.test(host)) return "WKRC";
-  if (/fox\s*19/i.test(s) || /wxix/i.test(s) || /fox19/i.test(host) || /wxix/i.test(host)) return "FOX19";
-  if (/wcpo/i.test(s) || /wcpo/i.test(host)) return "WCPO";
-  if (/wlwt/i.test(s) || /wlwt/i.test(host)) return "WLWT";
-  if (/wvxu/i.test(s) || /wvxu/i.test(host)) return "WVXU";
-  if (/wnku/i.test(s) || /wnku/i.test(host)) return "WNKU";
+  // TV/Radio call letters (prefer explicit brands)
+  if (/\bWKRC\b/i.test(s) || /wkrc|local12|local12\.com/i.test(host)) return "WKRC";
+  if (/\bFOX19\b/i.test(s) || /wxix|fox19/i.test(s) || /wxix|fox19/i.test(host)) return "FOX19";
+  if (/\bWCPO\b/i.test(s) || /wcpo/i.test(s) || /wcpo/i.test(host)) return "WCPO";
+  if (/\bWLWT\b/i.test(s) || /wlwt/i.test(s) || /wlwt/i.test(host)) return "WLWT";
+  if (/\bWVXU\b/i.test(s) || /wvxu/i.test(s) || /wvxu/i.test(host)) return "WVXU";
 
-  // Newspapers / mags / digital
-  const M = [
-    [/business\s*courier|biz\s*cour/i,  "BIZCOUR"],
-    [/cincinnati\s*herald/i,            "HERALD"],
-    [/catholic\s*telegraph/i,           "CATHTEL"],
-    [/american\s*israelite|israelite/i, "ISRAEL"],
-    [/signal/i,                         "SIGNAL"],
-    [/city\s*beat|citybeat/i,           "CITYBT"],
-    [/cincinnati\s*magazine/i,          "CINMAG"],
-    [/enquirer|cincinnati\.com/i,       "ENQ"],
-    [/nky\s*trib|northern\s*kentucky\s*tribune/i, "NKYTRIB"],
+  // Newspapers / mags / digital (Cincinnati-focused)
+  const MAP = [
+    // label regexes (either source text or hostname)
+    [/business\s*courier|biz\s*cour/i,               "BIZCOUR"],  // Cincinnati Business Courier
+    [/cincinnati\s*magazine|cincinnatimagazine\.com/i, "CINMAG"],
+    [/cincinnati\s*herald|thecincinnatiherald\.com/i, "HERALD"],
+    [/signal\s*cincinnati|signalcincinnati\.org/i,    "SIGNAL"],
+    [/soapbox\s*cincinnati|soapboxmedia\.com|feeds\.feedburner\.com\/soapboxmedia/i, "SOAPBOX"],
+    [/catholic\s*telegraph|thecatholictelegraph\.com/i, "CATHTEL"],
+    [/american\s*israelite|americanisraelite\.com/i,  "ISRAEL"],
+    [/news\s*record|newsrecord\.org/i,                "NEWSREC"],
+
+    // Others you might pull sometimes
+    [/city\s*beat|citybeat\.com/i,                    "CITYBEAT"],
+    [/enquirer|cincinnati\.com/i,                     "ENQUIRER"],
+    [/nky\s*trib|northern\s*kentucky\s*tribune|nkytribune\.com/i, "NKYTRIB"],
+
+    // Statewide/public media (softly downweighted by your worker, but label anyway)
+    [/ohio\s*capital\s*journal|ohiocapitaljournal\.com/i, "OHIOCAPJ"],
+    [/statehouse\s*news\s*bureau|statenews\.org/i,    "SHNB"],
+    [/spectrum\s*news.*cincinnati|spectrumlocalnews\.com/i, "SPECTRUM"],
   ];
-  for (const [re, code] of M) if (re.test(s) || re.test(host)) return code;
+  for (const [re, code] of MAP) {
+    if (re.test(s) || re.test(host)) return code;
+  }
 
-  // Generic call letters from text if present (W/ K + 3-4 letters + optional digits)
+  // Generic fallback: try call letters in text
   const call = (s.match(/\b([WK][A-Z]{2,3}\d?)\b/i) || [])[1];
   if (call) return call.toUpperCase();
 
-  // Fallback: compress name
+  // Last-resort compression of name/host
   return compressName(s || host);
 }
 
 function hostname(u) {
-  try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; }
+  try { return new URL(u).hostname.replace(/^www\./, ""); }
+  catch { return ""; }
 }
 
 function compressName(name) {
   if (!name) return "";
-  // Remove common fillers, uppercase, keep consonants, cap length
   const cleaned = name
     .replace(/\b(the|cincinnati|cincy|of|and|news|media|online)\b/ig, " ")
     .replace(/\s+/g, " ")
@@ -142,3 +155,4 @@ function compressName(name) {
   const letters = cleaned.replace(/[AEIOU\s]/g, "");
   return (letters || cleaned).slice(0, 8);
 }
+
