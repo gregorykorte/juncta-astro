@@ -1,6 +1,7 @@
 ---
 import Masthead from "../components/Masthead.astro";
 import Footer from "../components/Footer.astro";
+import mainScript from "../scripts/main.js?url";
 import siteCss    from "../styles/site.css?url";
 
 const title = "Juncta Juvant \u2014 A Queen City Compendium";
@@ -94,9 +95,7 @@ const title = "Juncta Juvant \u2014 A Queen City Compendium";
       <Footer />
     </div>
   <!-- just before </body> -->
-  <script type="module">
-    import "../scripts/main.js";
-  </script>
+<script type="module" src={mainScript}></script>
 </body>
 </html>
   </body>

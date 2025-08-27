@@ -1,6 +1,7 @@
 ---
 import Masthead from "../components/Masthead.astro";
 import Footer from "../components/Footer.astro";
+import mainScript from "../scripts/main.js?url";
 import siteCss    from "../styles/site.css?url";
 
 const title = "About Juncta Juvant";
@@ -38,14 +39,13 @@ const title = "About Juncta Juvant";
         </p>
         <p>
           This site gets its name from the motto of the City of Cincinnati, <i>Juncta Juvant</i>, a Latin phrase that roughly translates to: <i>"Chili, spaghetti and cheese are better when served together.”</i>
+
 </p>
       </main>
       <Footer />
     </div>
   <!-- just before </body> -->
-  <script type="module">
-    import "../scripts/main.js";
-  </script>
+<script type="module" src={mainScript}></script>
 </body>
 </html>
 
