@@ -1,0 +1,33 @@
+backend:
+  name: git-gateway
+  branch: main
+
+site_url: https://junctajuvant.pages.dev
+display_url: https://junctajuvant.pages.dev
+
+
+
+media_folder: "assets/uploads"
+public_folder: "/assets/uploads"
+
+collections:
+  - label: "Pages"
+    name: "pages"
+    folder: "content/pages"
+    create: true
+    slug: "{{slug}}"
+    editor: { preview: false }
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Body",  name: "body",  widget: "markdown" }
+  - label: "Overrides"
+    name: "overrides"
+    files:
+      - label: "Site Overrides"
+        name: "site"
+        file: "data/overrides.json"
+        editor: { preview: false }
+        fields:
+          - { label: "Pin Hero URL", name: "pin_hero_url", widget: "string", required: false }
+          - { label: "Hide Sources (slugs)", name: "hide_sources", widget: "list", required: false }
+          - { label: "Custom Tagline", name: "custom_tagline", widget: "string", required: false }
