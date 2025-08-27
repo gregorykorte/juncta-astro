@@ -1,13 +1,11 @@
 // functions/api/news.js
-// Build-time independent, runs on Cloudflare Pages Functions.
-// Optional KV cache binding: NEWS_CACHE (configure in Pages → Settings → Env vars & bindings)
-
-const VERSION = "2025-08-26-a";           // bump to invalidate cache safely
-const CACHE_TTL_SECONDS = 300;            // 5 minutes
-const MAX_ITEMS = 22;                     // total items to return (rail)
+// Worker-safe RSS/Atom parsing (no DOMParser). KV is optional (bind as NEWS_CACHE).
+const VERSION = "2025-08-26-b";
+const CACHE_TTL_SECONDS = 300; // 5 minutes
+const MAX_ITEMS = 22;
 const USER_AGENT = "JunctaJuvantBot/1.0 (+https://junctajuvant.com)";
 
-// Curated Cincinnati-ish feeds (adjust freely)
+// Curate/adjust as you like
 const FEEDS = [
   { url: "https://www.wcpo.com/news/local-news/hamilton-county/cincinnati.rss", label: "WCPO" },
   { url: "https://www.wlwt.com/local-news-rss",                                  label: "WLWT" },
@@ -15,165 +13,181 @@ const FEEDS = [
   { url: "https://www.citybeat.com/cincinnati/Rss.xml?section=11962257",         label: "CityBeat" },
   { url: "https://www.cincinnatimagazine.com/category/news/feed/",               label: "Cincinnati Magazine" },
   { url: "https://thecincinnatiherald.com/feed/",                                label: "Cincinnati Herald" },
-  // Biz Courier RSS link can change; if this one 403s, just remove it:
   { url: "https://rss.bizjournals.com/cincinnati/latest_news",                   label: "Cincy Business Courier" },
 ];
 
 export async function onRequest(context) {
   try {
-    const { env } = context;
-    const kv = env?.NEWS_CACHE ?? null;
-    const cacheKey = `news:${VERSION}`;
+    const kv = context.env?.NEWS_CACHE || null;
+    const key = `news:${VERSION}`;
 
-    // 1) Try KV first (optional)
+    // KV cache (optional)
     if (kv) {
-      const cached = await kv.get(cacheKey);
-      if (cached) {
-        return json(cached, { "x-cache": "hit" });
-      }
+      const cached = await kv.get(key);
+      if (cached) return json(cached, { "x-cache": "hit" });
     }
 
-    // 2) Fetch all feeds with a short timeout & parse
+    // Fetch feeds in parallel
     const results = await Promise.allSettled(
-      FEEDS.map(({ url, label }) => fetchAndParseFeed(url, label))
+      FEEDS.map(f => fetchFeed(f.url, f.label))
     );
 
-    // 3) Merge, dedupe, sort
     const items = dedupeAndSort(
-      results
-        .flatMap(r => (r.status === "fulfilled" ? r.value : []))
-        .filter(Boolean)
+      results.flatMap(r => (r.status === "fulfilled" ? r.value : []))
     );
 
-    // 4) Build payload: hero + rail (hero first)
-    const hero = chooseHero(items);
+    const hero = pickHero(items);
     const rail = items
-      .filter(it => it.link !== hero?.link) // keep hero out of the rail list
+      .filter(i => !hero || i.link !== hero.link)
       .slice(0, MAX_ITEMS)
       .map(minifyForRail);
 
-    const payload = { hero, rail, count: items.length, version: VERSION, ts: new Date().toISOString() };
+    const payload = {
+      hero,
+      rail,
+      count: items.length,
+      version: VERSION,
+      ts: new Date().toISOString()
+    };
 
-    // 5) Cache (optional)
     if (kv) {
       try {
-        await kv.put(cacheKey, JSON.stringify(payload), { expirationTtl: CACHE_TTL_SECONDS });
-      } catch { /* ignore cache write errors */ }
+        await kv.put(key, JSON.stringify(payload), { expirationTtl: CACHE_TTL_SECONDS });
+      } catch {}
     }
 
     return json(payload, { "x-cache": "miss" });
   } catch (err) {
     console.error("NEWS_ERROR", err?.stack || err);
-    // Always return JSON so the client UI can render gracefully
     return json({ hero: null, rail: [], error: "temporary_error", version: VERSION }, { "x-cache": "bypass" });
   }
 }
 
-/* ----------------------- helpers ----------------------- */
+/* ---------------- helpers ---------------- */
 
-function json(obj, extraHeaders = {}) {
+function json(obj, extra = {}) {
   return new Response(typeof obj === "string" ? obj : JSON.stringify(obj), {
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...extraHeaders,
-    },
+    headers: { "content-type": "application/json; charset=utf-8", ...extra }
   });
 }
 
-async function fetchAndParseFeed(url, label) {
+async function fetchFeed(url, label) {
   const res = await fetchWithTimeout(url, { headers: { "user-agent": USER_AGENT } }, 8000);
-  if (!res.ok) throw new Error(`Feed fetch failed: ${url} (${res.status})`);
-  const contentType = (res.headers.get("content-type") || "").toLowerCase();
-
+  if (!res.ok) throw new Error(`Feed ${res.status} ${url}`);
   const text = await res.text();
-  const xml = new DOMParser().parseFromString(text, "text/xml");
-  // Try RSS 2.0
-  const rssItems = Array.from(xml.querySelectorAll("channel > item"));
-  if (rssItems.length) return rssItems.map(el => rssItemToObj(el, label));
+  return parseFeed(text, label);
+}
 
-  // Try Atom
-  const atomEntries = Array.from(xml.querySelectorAll("feed > entry"));
-  if (atomEntries.length) return atomEntries.map(el => atomEntryToObj(el, label));
-
-  // Fallback: try naive JSON (rare)
-  if (contentType.includes("application/json")) {
-    const data = JSON.parse(text);
-    const entries = data?.items || data?.entries || [];
-    return entries.map(obj => ({
-      title: str(obj.title),
-      link: str(obj.url || obj.link),
-      source: label,
-      isoDate: toIso(obj.date_published || obj.published || obj.date || obj.updated),
-      desc: stripHtml(obj.summary || obj.content_text || obj.content_html || ""),
-      image: obj.image || null,
-      byline: obj.author?.name || obj.author || null,
-    })).filter(it => it.title && it.link);
+function parseFeed(xml, label) {
+  // Decide RSS vs Atom by tags present
+  if (/<channel[\s>]/i.test(xml) && /<item[\s>]/i.test(xml)) {
+    return parseRss(xml, label);
   }
-
+  if (/<feed[\s>]/i.test(xml) && /<entry[\s>]/i.test(xml)) {
+    return parseAtom(xml, label);
+  }
   return [];
 }
 
-function rssItemToObj(el, label) {
-  const get = q => (el.querySelector(q)?.textContent || "").trim();
-  const title = get("title");
-  const link = get("link") || el.querySelector("guid")?.textContent?.trim() || "";
-  const descRaw = get("description") || get("content\\:encoded") || "";
-  const pub = get("pubDate");
-  const byline = get("dc\\:creator") || null;
+function parseRss(xml, label) {
+  const items = [];
+  const itemRe = /<item[\s\S]*?<\/item>/gi;
+  let m;
+  while ((m = itemRe.exec(xml))) {
+    const block = m[0];
+    const title = getTag(block, "title");
+    const link  = getTag(block, "link") || getTag(block, "guid");
+    const desc  = getTag(block, "description") || getTag(block, "content:encoded");
+    const pub   = getTag(block, "pubDate");
+    const by    = getTag(block, "dc:creator");
+    const img   = getAttr(block, "enclosure", "url") || getAttr(block, "media:content", "url");
 
-  // Try standard <enclosure url=""> or <media:content url="">
-  const enclosureUrl = el.querySelector("enclosure")?.getAttribute("url")
-                     || el.querySelector("media\\:content")?.getAttribute("url")
-                     || null;
+    if (!title || !link) continue;
 
-  return {
-    title: title || null,
-    link,
-    source: label,
-    isoDate: toIso(pub),
-    desc: stripHtml(descRaw),
-    image: enclosureUrl,
-    byline,
-  };
+    items.push({
+      title: title.trim(),
+      link: link.trim(),
+      source: label,
+      isoDate: toIso(pub),
+      desc: stripHtml(desc || ""),
+      image: img || null,
+      byline: by || null
+    });
+  }
+  return items;
 }
 
-function atomEntryToObj(el, label) {
-  const get = q => (el.querySelector(q)?.textContent || "").trim();
-  const title = get("title");
-  const link = el.querySelector("link[rel='alternate']")?.getAttribute("href")
-             || el.querySelector("link")?.getAttribute("href")
-             || "";
-  const descRaw = get("summary") || get("content") || "";
-  const updated = get("updated") || get("published");
-  const author = el.querySelector("author > name")?.textContent?.trim() || null;
-  const enclosureUrl = el.querySelector("link[rel='enclosure']")?.getAttribute("href") || null;
+function parseAtom(xml, label) {
+  const items = [];
+  const entryRe = /<entry[\s\S]*?<\/entry>/gi;
+  let m;
+  while ((m = entryRe.exec(xml))) {
+    const block = m[0];
+    const title = getTag(block, "title");
+    const link  = getLinkHref(block) || "";
+    const desc  = getTag(block, "summary") || getTag(block, "content");
+    const upd   = getTag(block, "updated") || getTag(block, "published");
+    const by    = getTag(block, "author") ? getTag(block, "name") : null;
+    const enc   = getLinkHref(block, "enclosure");
 
-  return {
-    title: title || null,
-    link,
-    source: label,
-    isoDate: toIso(updated),
-    desc: stripHtml(descRaw),
-    image: enclosureUrl,
-    byline: author,
-  };
+    if (!title || !link) continue;
+
+    items.push({
+      title: title.trim(),
+      link: link.trim(),
+      source: label,
+      isoDate: toIso(upd),
+      desc: stripHtml(desc || ""),
+      image: enc || null,
+      byline: by || null
+    });
+  }
+  return items;
+}
+
+function getTag(block, tag) {
+  const t = tag.replace(/([.*+?^${}()|\[\]\/\\])/g, "\\$1"); // escape
+  const re = new RegExp(`<${t}[^>]*>([\\s\\S]*?)<\\/${t}>`, "i");
+  const m = re.exec(block);
+  if (!m) return "";
+  return decodeXml(m[1] || "");
+}
+
+function getAttr(block, tag, attr) {
+  const t = tag.replace(/([.*+?^${}()|\[\]\/\\])/g, "\\$1");
+  const a = attr.replace(/([.*+?^${}()|\[\]\/\\])/g, "\\$1");
+  const re = new RegExp(`<${t}\\b[^>]*\\s${a}="([^"]+)"[^>]*>`, "i");
+  const m = re.exec(block);
+  return m ? decodeXml(m[1]) : null;
+}
+
+function getLinkHref(block, rel) {
+  if (rel) {
+    const re = new RegExp(`<link\\b[^>]*rel=["']${rel}["'][^>]*href=["']([^"']+)["'][^>]*>`, "i");
+    const m = re.exec(block);
+    if (m) return decodeXml(m[1]);
+  }
+  const m2 = /<link\b[^>]*href=["']([^"']+)["'][^>]*>/.exec(block);
+  return m2 ? decodeXml(m2[1]) : null;
+}
+
+function decodeXml(s) {
+  return s
+    .replace(/<!\[CDATA\[(.*?)\]\]>/gis, "$1")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 function stripHtml(s) {
-  if (!s) return "";
   return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function toIso(s) {
-  try {
-    if (!s) return null;
-    const d = new Date(s);
-    if (isNaN(d)) return null;
-    return d.toISOString();
-  } catch { return null; }
+  try { const d = new Date(s); return isNaN(d) ? null : d.toISOString(); } catch { return null; }
 }
-
-function str(x) { return (x ?? "").toString(); }
 
 function dedupeAndSort(items) {
   const seen = new Set();
@@ -184,18 +198,14 @@ function dedupeAndSort(items) {
     seen.add(key);
     out.push(it);
   }
-  // sort newest first
   out.sort((a,b) => (Date.parse(b.isoDate || 0) || 0) - (Date.parse(a.isoDate || 0) || 0));
   return out;
 }
 
-function chooseHero(items) {
-  // Prefer items with images; fallback to the first
-  const withImg = items.find(it => it.image && it.image.startsWith("http"));
+function pickHero(items) {
+  const withImg = items.find(i => i.image && i.image.startsWith("http"));
   const base = withImg || items[0] || null;
   if (!base) return null;
-
-  // Ensure hero fields expected by the client
   return {
     title: base.title,
     link: base.link,
@@ -203,7 +213,16 @@ function chooseHero(items) {
     desc: base.desc || null,
     image: base.image || null,
     byline: base.byline || null,
-    isoDate: base.isoDate || null,
+    isoDate: base.isoDate || null
+  };
+}
+
+function minifyForRail(i) {
+  return {
+    title: i.title,
+    link: i.link,
+    source: i.source,
+    isoDate: i.isoDate
   };
 }
 
