@@ -181,3 +181,74 @@ body{
       .title-col .tagline { margin-bottom: .2rem; }
       .title-col .dateline { margin-top: .2rem; }
     }
+
+    /* Weather icon */
+  .stat-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .wx-icon { display: inline-flex; align-items: center; }
+  .wx-icon svg { width: 28px; height: 28px; }
+
+  /* Colors per kind (set on data-kind) */
+  .wx-icon[data-kind="sun"]   svg { fill: #FDB813; }     /* amber */
+  .wx-icon[data-kind="partly"]svg { fill: #FDB813; }     /* amber */
+  .wx-icon[data-kind="cloud"] svg { fill: #9AA0A6; }     /* gray */
+  .wx-icon[data-kind="fog"]   svg { stroke: #90A4AE; fill: none; } /* blue-gray lines */
+  .wx-icon[data-kind="rain"]  svg { fill: #2196F3; }     /* blue */
+  .wx-icon[data-kind="snow"]  svg { stroke: #90CAF9; fill: none; }  /* light blue lines */
+  .wx-icon[data-kind="storm"] svg { fill: #673AB7; }     /* deep purple */
+  .wx-icon[data-kind="hail"]  svg { fill: #00BCD4; }     /* cyan */
+  .wx-icon[data-kind="na"]    svg { fill: #B0BEC5; }     /* neutral */
+
+/* TOP-style three-column news rail */
+.news-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.news-list li {
+  display: grid;
+  grid-template-columns: 1fr minmax(6ch, 10ch) minmax(5ch, 8ch);
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.25rem 0;
+  border-bottom: 1px dotted rgba(0,0,0,.08);
+}
+.news-list li:last-child { border-bottom: 0; }
+
+.news-list .col-headline {
+  text-decoration: none;
+}
+.news-list .col-headline:hover {
+  text-decoration: underline;
+}
+
+.news-list .col-source {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: rgba(0,0,0,.7);
+}
+
+.news-list .col-time {
+  text-align: right;
+  white-space: nowrap;
+  color: rgba(0,0,0,.55);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .news-list li {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+  .news-list .col-source, .news-list .col-time {
+    font-size: 0.9em;
+    color: rgba(0,0,0,.65);
+  }
+  .news-list .col-time {
+    text-align: left;
+  }
+}
