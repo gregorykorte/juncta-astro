@@ -58,7 +58,12 @@ export async function start() {
 }
 
 /* ---------- helpers ---------- */
-function pick(...vals) { for (const v of vals) if (v ?? false || v === 0) return v; }
+function pick(...vals) {
+  for (const v of vals) {
+    if (v !== undefined && v !== null) return v; // preserves 0, "", false as valid values
+  }
+  return undefined;
+}
 function isNum(v) { return typeof v === "number" && Number.isFinite(v); }
 
 function setDesc(descEl, text) {
