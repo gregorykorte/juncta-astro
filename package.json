@@ -1,20 +1,14 @@
 {
   "name": "juncta-astro",
-  "version": "0.0.1",
   "private": true,
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview",
-    "dev:functions": "wrangler pages dev --port=8788 --local true --compatibility-date=2024-11-01 --functions ./functions ./public"
-    "build": "astro build && node scripts/postbuild-check.mjs"
-},
-  "dependencies": {
-    "astro": "^4.0.0"
+    "preview": "astro preview"
   },
-  "devDependencies": {
-    "wrangler": "^3.72.0"
+  "dependencies": {
+    "astro": "^5.13.3"
   }
-
 }
