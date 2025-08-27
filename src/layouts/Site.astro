@@ -1,7 +1,8 @@
 ---
-import siteCss    from "../styles/site.css?url";
-import mainScript from "../scripts/main.js?url";   // <-- this is key
+import siteCss   from "../styles/site.css?url";
+import entrySrc  from "../scripts/entry.prod.js?url";   // <-- use the new entry
 const { title } = Astro.props;
+
 ---
 <!doctype html>
 <html lang="en">
@@ -33,6 +34,6 @@ const { title } = Astro.props;
     <body>
     <slot />
     <!-- built, hashed asset with correct MIME -->
-    <script type="module" src={mainScript}></script>
+    <script type="module" src={entrySrc}></script>
   </body>
 </html>

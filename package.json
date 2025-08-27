@@ -8,11 +8,13 @@
     "build": "astro build",
     "preview": "astro preview",
     "dev:functions": "wrangler pages dev --port=8788 --local true --compatibility-date=2024-11-01 --functions ./functions ./public"
-  },
+    "build": "astro build && node scripts/postbuild-check.mjs"
+},
   "dependencies": {
     "astro": "^4.0.0"
   },
   "devDependencies": {
     "wrangler": "^3.72.0"
   }
+
 }
