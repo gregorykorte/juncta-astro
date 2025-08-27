@@ -1,5 +1,5 @@
 // public/scripts/modules/rss.js
-// Robust news loader with TOP-style 3-column rail.
+// Robust news loader with TOP-style 3-column rail + smart title tightening.
 
 const NEWS_URL = "/api/news";
 
@@ -9,7 +9,7 @@ export async function start() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    renderRail((data?.rail || []).slice(0, 8)); // TOP-style: show 8
+    renderRail((data?.rail || []).slice(0, 8));
 
     if (data?.hero) {
       document.dispatchEvent(new CustomEvent("jj:newsHero", { detail: data.hero }));
@@ -26,17 +26,21 @@ function renderRail(items) {
   if (!list) return;
 
   const rows = items.map((it) => {
-    const title = it?.title || it?.headline || it?.t || "(untitled)";
+    const fullTitle = it?.title || it?.headline || it?.t || "(untitled)";
     const url   = it?.link  || it?.url || "#";
     const src   = it?.source || it?.label || it?.site || "";
     const raw   = it?.isoDate || it?.pubDate || it?.published || it?.date || it?.time || it?.ts;
-    const d     = parseDateMaybe(raw);
+
+    const d = parseDateMaybe(raw);
     const when  = fmtRelative(d);
-    const code  = abbrevSource(src, url);
+    const code  = enforce8(abbrevSource(src, url));   // hard-cap 8 chars
+    const tight = shortenTitle(fullTitle, src, url);  // smart tighten, no "..."
 
     return `
       <li class="news-row">
-        <a class="col-headline" href="${attr(url)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>
+        <a class="col-headline" href="${attr(url)}" target="_blank" rel="noopener" title="${escapeHtml(fullTitle)}">
+          ${escapeHtml(tight)}
+        </a>
         <span class="col-source" title="${escapeHtml(src)}">${escapeHtml(code)}</span>
         <time class="col-time" ${d ? `datetime="${d.toISOString()}"` : ""}>${when || ""}</time>
       </li>
@@ -44,6 +48,76 @@ function renderRail(items) {
   });
 
   list.innerHTML = rows.join("");
+}
+
+/* ---------- headline tightening (no truncation) ---------- */
+function shortenTitle(title, src = "", url = "") {
+  let t = String(title);
+
+  // 1) Drop trailing site/brand suffixes like " — WCPO" or " | CityBeat"
+  t = stripBrandSuffix(t, src, url);
+
+  // 2) Remove boilerplate bracketed tags
+  t = t
+    .replace(/\s*\((?:photos?|video|gallery|opinion|update[sd]?)\)\s*$/i, "")
+    .replace(/\s*-\s*(?:photos?|video|gallery|opinion|update[sd]?)\s*$/i, "");
+
+  // 3) Collapse verbose local phrases to tight mnemonics
+  const repl = [
+    [/^Cincinnati[,—:\s]+/i, ""],
+    [/^Cincy[,—:\s]+/i, ""],
+
+    [/University of Cincinnati/gi, "UC"],
+    [/Cincinnati Public Schools/gi, "CPS"],
+    [/Cincinnati Police Department/gi, "CPD"],
+    [/Cincinnati Fire Department/gi, "CFD"],
+    [/Cincinnati City Council/gi, "Council"],
+    [/Hamilton County/gi, "Ham. Co."],
+    [/Northern Kentucky/gi, "NKY"],
+    [/Cincinnati Children'?s(?: Hospital(?: Medical Center)?)?/gi, "Children’s"],
+    [/(Cincinnati\s*)?Zoo( & Botanical Garden)?/gi, "Zoo"],
+    [/Cincinnati\/Northern Kentucky International Airport/gi, "CVG"],
+    [/Cincinnati City Hall/gi, "City Hall"],
+    [/Ohio Department of Transportation/gi, "ODOT"],
+    [/Cincinnati Department of Transportation and Engineering/gi, "DOTE"],
+
+    [/Cincinnati Bengals/gi, "Bengals"],
+    [/Cincinnati Reds/gi, "Reds"],
+
+    [/\bInterstate\s+(\d+)\b/gi, "I-$1"],
+    [/\bU\.S\.\s*Route\s*(\d+)\b/gi, "US-$1"],
+    [/\bState\s*Route\s*(\d+)\b/gi, "SR-$1"],
+
+    // boilerplate tails
+    [/\s*[—–-]\s*What to know.*$/i, ""],
+    [/\s*:\s*What to know.*$/i, ""],
+    [/\s*[—–-]\s*What we know.*$/i, ""],
+  ];
+  for (const [re, to] of repl) t = t.replace(re, to);
+
+  // 4) Normalize whitespace/dashes
+  t = t.replace(/\s{2,}/g, " ").replace(/\s*—\s*/g, " — ").trim();
+
+  // Avoid over-shortening to nothing
+  return t.length ? t : String(title);
+}
+
+function stripBrandSuffix(t, src, url) {
+  const host = hostname(url);
+  const brands = [
+    "wcpo", "wlwt", "fox19", "wkrc", "local 12", "wvxu", "w nku",
+    "cincinnati.com", "enquirer", "cincinnati magazine", "citybeat",
+    "signal cincinnati", "soapbox", "business courier", "bizjournals",
+    "catholic telegraph", "american israelite", "news record", "nky tribune",
+    "spectrum"
+  ].join("|");
+  const tailRe = new RegExp(`\\s*[\\-|\\||—–]\\s*(?:${brands})\\b.*$`, "i");
+  const hostRe = /(\s*[|\-—–]\s*)?([A-Za-z0-9.-]+\.com|[A-Za-z0-9.-]+\.org)\b.*$/i;
+
+  // If suffix looks like a brand or a host, drop it.
+  t = t.replace(tailRe, "");
+  t = t.replace(hostRe, "");
+  return t.trim();
 }
 
 /* ---------- helpers ---------- */
@@ -89,7 +163,7 @@ function escapeHtml(s) {
 }
 function attr(s) { return String(s).replaceAll('"', "&quot;"); }
 
-/* ---------- source mnemonics ---------- */
+function enforce8(s) { return String(s || "").toUpperCase().slice(0, 8); }
 
 /* ---------- source mnemonics (Bloomberg-style) ---------- */
 
@@ -98,17 +172,16 @@ function abbrevSource(src = "", url = "") {
   const u = String(url).trim();
   const host = hostname(u);
 
-  // TV/Radio call letters (prefer explicit brands)
-  if (/\bWKRC\b/i.test(s) || /wkrc|local12|local12\.com/i.test(host)) return "WKRC";
-  if (/\bFOX19\b/i.test(s) || /wxix|fox19/i.test(s) || /wxix|fox19/i.test(host)) return "FOX19";
+  // TV/Radio
+  if (/\bWKRC\b/i.test(s) || /wkrc|local12/i.test(host)) return "WKRC";
+  if (/\bFOX19\b/i.test(s) || /wxix|fox19/i.test(s) || /wxix|fox19/i.test(host)) return "WXIX";
   if (/\bWCPO\b/i.test(s) || /wcpo/i.test(s) || /wcpo/i.test(host)) return "WCPO";
   if (/\bWLWT\b/i.test(s) || /wlwt/i.test(s) || /wlwt/i.test(host)) return "WLWT";
   if (/\bWVXU\b/i.test(s) || /wvxu/i.test(s) || /wvxu/i.test(host)) return "WVXU";
 
-  // Newspapers / mags / digital (Cincinnati-focused)
+  // Print/digital
   const MAP = [
-    // label regexes (either source text or hostname)
-    [/business\s*courier|biz\s*cour/i,               "BIZCOUR"],  // Cincinnati Business Courier
+    [/business\s*courier|biz\s*cour/i,               "BIZCOUR"],
     [/cincinnati\s*magazine|cincinnatimagazine\.com/i, "CINMAG"],
     [/cincinnati\s*herald|thecincinnatiherald\.com/i, "HERALD"],
     [/signal\s*cincinnati|signalcincinnati\.org/i,    "SIGNAL"],
@@ -116,32 +189,26 @@ function abbrevSource(src = "", url = "") {
     [/catholic\s*telegraph|thecatholictelegraph\.com/i, "CATHTEL"],
     [/american\s*israelite|americanisraelite\.com/i,  "ISRAEL"],
     [/news\s*record|newsrecord\.org/i,                "NEWSREC"],
-
-    // Others you might pull sometimes
     [/city\s*beat|citybeat\.com/i,                    "CITYBEAT"],
     [/enquirer|cincinnati\.com/i,                     "ENQUIRER"],
     [/nky\s*trib|northern\s*kentucky\s*tribune|nkytribune\.com/i, "NKYTRIB"],
-
-    // Statewide/public media (softly downweighted by your worker, but label anyway)
+    // Statewide/public media
     [/ohio\s*capital\s*journal|ohiocapitaljournal\.com/i, "OHIOCAPJ"],
     [/statehouse\s*news\s*bureau|statenews\.org/i,    "SHNB"],
     [/spectrum\s*news.*cincinnati|spectrumlocalnews\.com/i, "SPECTRUM"],
   ];
-  for (const [re, code] of MAP) {
-    if (re.test(s) || re.test(host)) return code;
-  }
+  for (const [re, code] of MAP) if (re.test(s) || re.test(host)) return code;
 
-  // Generic fallback: try call letters in text
+  // Fallback: call letters in text
   const call = (s.match(/\b([WK][A-Z]{2,3}\d?)\b/i) || [])[1];
   if (call) return call.toUpperCase();
 
-  // Last-resort compression of name/host
+  // Final fallback
   return compressName(s || host);
 }
 
 function hostname(u) {
-  try { return new URL(u).hostname.replace(/^www\./, ""); }
-  catch { return ""; }
+  try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; }
 }
 
 function compressName(name) {
@@ -155,4 +222,3 @@ function compressName(name) {
   const letters = cleaned.replace(/[AEIOU\s]/g, "");
   return (letters || cleaned).slice(0, 8);
 }
-

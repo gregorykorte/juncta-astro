@@ -1,6 +1,6 @@
 /* ========================================================================== */
-/*  Juncta Juvant — site.css                                                  */
-/*  Fonts used (loaded in HTML): Source Serif 4, Newsreader, Cinzel           */
+/*  Juncta Juvant — site.css (TOP-style layout)                               */
+/*  Fonts loaded in HTML: Source Serif 4, Newsreader, Cinzel                  */
 /* ========================================================================== */
 
 /* ---------- Root & Reset -------------------------------------------------- */
@@ -20,7 +20,8 @@
   --gap-sm: .75rem;
   --pad: 1rem;
 
-  --container-w: 1200px; /* Adjust to 1100–1280 if you want wider/narrower */
+  /* Wider container to fit most headlines */
+  --container-w: 1280px;
 }
 
 *,
@@ -49,7 +50,7 @@ a:hover { color: var(--accent); }
 /* Utility */
 .muted { color: var(--muted); }
 
-/* Horizontal rule element used in masthead/footer */
+/* Rule */
 .rule {
   border-top: 1px solid var(--rule);
   height: 0;
@@ -109,11 +110,11 @@ a:hover { color: var(--accent); }
 }
 
 /* ========================================================================== */
-/*  Main layout: Bloomberg TOP style (2/3 | 1/3)                              */
+/*  Main layout: Bloomberg TOP style (≈70% | 30%)                              */
 /* ========================================================================== */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); /* ≈ 2/3 | 1/3 */
+  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); /* wider news column */
   grid-template-areas:
     "news hero"
     "news rail";
@@ -156,8 +157,8 @@ a:hover { color: var(--accent); }
 
 .news-list li {
   display: grid;
-  grid-template-columns: 1fr minmax(6ch, 10ch) minmax(5ch, 8ch);
-  gap: .75rem;
+  grid-template-columns: 1fr auto auto; /* headline owns space; source/time take what they need */
+  gap: 0.5rem;                           /* tighter */
   align-items: baseline;
   padding: .35rem 0;
   border-bottom: 1px dotted var(--box-border);
@@ -167,26 +168,39 @@ a:hover { color: var(--accent); }
 .news-list .col-headline {
   text-decoration: none;
   display: -webkit-box;
-  -webkit-line-clamp: 2;       /* clamp long titles */
+  -webkit-line-clamp: 2;       /* safety clamp (remove if you want full wrap) */
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .news-list .col-headline:hover { text-decoration: underline; }
 
+/* SOURCE · TIME packed closer together */
 .news-list .col-source {
   text-transform: uppercase;
-  letter-spacing: .02em;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   color: var(--muted);
   font-size: .97em;
+  max-width: 10ch;           /* visual cap; JS also caps to 8 chars */
+  overflow: hidden;
+  text-overflow: clip;
+  margin-right: -0.1rem;     /* nudge toward time */
 }
-
 .news-list .col-time {
   text-align: right;
   white-space: nowrap;
   color: var(--muted-2);
   font-variant-numeric: tabular-nums;
   font-size: .97em;
+  margin-left: -0.2rem;      /* overlap spacing */
+  position: relative;
+  padding-left: 0.4rem;      /* space for dot */
+}
+.news-list .col-time::before {
+  content: "·";
+  position: absolute;
+  left: 0;
+  color: var(--muted-2);
 }
 
 /* ========================================================================== */
@@ -206,9 +220,7 @@ a:hover { color: var(--accent); }
   font-size: 1.1rem;
   line-height: 1.25;
 }
-.hero-headline a {
-  text-decoration: none;
-}
+.hero-headline a { text-decoration: none; }
 .hero-headline a:hover { text-decoration: underline; }
 
 .hero-meta {
@@ -275,9 +287,7 @@ a:hover { color: var(--accent); }
   border-bottom: 1px dotted var(--box-border);
 }
 .scores-list li:last-child { border-bottom: 0; }
-.scores-list .meta {
-  color: var(--muted);
-}
+.scores-list .meta { color: var(--muted); }
 
 /* ========================================================================== */
 /*  Footer                                                                    */
