@@ -33,7 +33,7 @@ const { title } = Astro.props;
   </head>
   <body>
     <slot />
-    <!-- serve real files from /public/scripts -->
+    <!-- real file served from /public, guaranteed JS MIME -->
     <script type="module" src="/scripts/main.js"></script>
   </body>
 </html>
