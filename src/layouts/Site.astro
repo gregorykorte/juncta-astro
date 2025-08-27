@@ -1,5 +1,7 @@
 ---
 import siteCss from "../styles/site.css?url";
+import mainScript  from "../scripts/main.js?url";   // <-- key line
+
 const { title } = Astro.props;
 ---
 <!doctype html>
@@ -32,8 +34,7 @@ const { title } = Astro.props;
     <slot />
 
     <!-- Bullet-proof: inline ESM so Vite/Astro bundles it; no external script URL to 404 -->
-    <script type="module" is:inline>
-      import "../scripts/main.js";
-    </script>
+   <script type="module" src={mainScript}></script>
+
   </body>
 </html>
