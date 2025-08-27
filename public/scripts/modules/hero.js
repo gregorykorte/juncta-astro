@@ -1,47 +1,89 @@
-import { TZ } from './config.js';
+// public/scripts/modules/hero.js
+// Listens for "jj:newsHero" and renders the hero card safely.
 
-function setHero(it) {
-  const fig = document.querySelector('.hero');
-  const img = fig?.querySelector('img');
-  if (!fig || !img || !it) return;
-
-  // Headline
-  const a = document.getElementById('hero-link');
-  if (a) { a.textContent = it.title || ''; a.href = it.link || '#'; }
-
-  // Meta (matches rail)
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: TZ, month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true
-  });
-  const src = document.getElementById('hero-source');
-  const when = document.getElementById('hero-time');
-  const by   = document.getElementById('hero-byline');
-  if (src)  src.textContent = it.source || '';
-  if (when) when.textContent = fmt.format(new Date(it.pubDate));
-  if (by)   by.textContent   = it.byline ? ` · by ${it.byline}` : '';
-
-  // Image + alt
-  if (it.imageUrl) img.src = it.imageUrl;
-  img.alt = it.title || 'Feature photo';
-
-  // Description: prefer firstParagraph (server) then full description
-  const desc = document.getElementById('hero-desc');
-  if (desc) desc.textContent = it.firstParagraph || it.description || '';
-
-  // Clickable figure
-  const open = () => { if (it.link) window.open(it.link, '_blank', 'noopener'); };
-  fig.style.cursor = 'pointer';
-  fig.setAttribute('role','link');
-  fig.tabIndex = 0;
-  fig.onclick = open;
-  fig.onkeyup = (e)=>{ if (e.key === 'Enter') open(); };
-
-  // Tell rail to drop the hero
-  try { localStorage.setItem('jj_hero_choice', JSON.stringify({ link: it.link, ts: Date.now() })); } catch {}
-  window.dispatchEvent(new CustomEvent('jj:heroSelected', { detail: { link: it.link } }));
+export function start() {
+  document.addEventListener(
+    "jj:newsHero",
+    (e) => {
+      try {
+        renderHero(e.detail);
+      } catch (err) {
+        console.warn("[JJ] hero render failed", err);
+      }
+    },
+    { once: false }
+  );
 }
 
-export function startHero(){
-  // Use server-picked hero
-  window.addEventListener('jj:newsHero', (e)=> { if (e.detail) setHero(e.detail); });
+function renderHero(item) {
+  if (!item) return;
+
+  const linkEl   = document.getElementById("hero-link");
+  const sourceEl = document.getElementById("hero-source");
+  const timeEl   = document.getElementById("hero-time");
+  const bylineEl = document.getElementById("hero-byline");
+  const descEl   = document.getElementById("hero-desc");
+  const imgEl    = document.querySelector(".hero-media img");
+
+  const title  = item.title || item.headline || item.t || "(untitled)";
+  const url    = item.link  || item.url || "#";
+  const source = item.source || item.label || item.site || "";
+  const byline = item.byline || item.author || "";
+  const raw    = item.isoDate || item.pubDate || item.published || item.date || item.time || item.ts;
+
+  if (linkEl) {
+    linkEl.textContent = title;
+    linkEl.href = url;
+  }
+  if (sourceEl) sourceEl.textContent = source;
+
+  if (timeEl) {
+    const d = parseDateMaybe(raw);
+    timeEl.textContent = d ? fmtRelative(d) : "";
+  }
+
+  // Markup has: "... <span id='hero-time'></span><span id='hero-byline'></span>"
+  // So we include a leading separator here.
+  if (bylineEl) bylineEl.textContent = byline ? ` · ${byline}` : "";
+
+  if (descEl) descEl.textContent = stripHtml(item.description || item.summary || item.desc || "");
+
+  if (imgEl) {
+    const img =
+      item.image ||
+      item.img ||
+      item.thumbnail ||
+      (item.enclosure && item.enclosure.url) ||
+      null;
+    if (img) imgEl.src = img;
+  }
 }
+
+/* ---------- helpers ---------- */
+
+function parseDateMaybe(v) {
+  if (!v) return null;
+  if (typeof v === "number") {
+    const ms = v < 2e10 ? v * 1000 : v; // treat small as seconds
+    const d = new Date(ms);
+    return isFinite(d) && !isNaN(d) ? d : null;
+  }
+  if (typeof v === "string") {
+    const t = Date.parse(v.trim());
+    if (!Number.isNaN(t)) {
+      const d = new Date(t);
+      return isFinite(d) && !isNaN(d) ? d : null;
+    }
+    return null;
+  }
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  return null;
+}
+
+function fmtRelative(d) {
+  const now = Date.now();
+  const diff = Math.round((now - d.getTime()) / 1000);
+  if (diff < 0) return "";
+  if (diff < 60) return "just now";
+  const m = Math.floor(diff / 60);
+  if (m < 60) return `
