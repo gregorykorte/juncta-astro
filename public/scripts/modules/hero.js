@@ -86,4 +86,14 @@ function fmtRelative(d) {
   if (diff < 0) return "";
   if (diff < 60) return "just now";
   const m = Math.floor(diff / 60);
-  if (m < 60) return `
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function stripHtml(s) {
+  return String(s).replace(/<[^>]+>/g, "").trim();
+}
