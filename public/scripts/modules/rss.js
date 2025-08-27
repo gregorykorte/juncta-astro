@@ -33,15 +33,16 @@ function renderRail(items) {
 
     const d = parseDateMaybe(raw);
     const when  = fmtRelative(d);
-    const code  = enforce8(abbrevSource(src, url));   // hard-cap 8 chars
-    const tight = shortenTitle(fullTitle, src, url);  // smart tighten, no "..."
+    const code  = enforce8(abbrevSource(src, url));         // 8-char cap
+    const home  = sourceHomepage(code, url, src);           // NEW
+    const tight = shortenTitle(fullTitle, src, url);
 
     return `
       <li class="news-row">
         <a class="col-headline" href="${attr(url)}" target="_blank" rel="noopener" title="${escapeHtml(fullTitle)}">
           ${escapeHtml(tight)}
         </a>
-        <span class="col-source" title="${escapeHtml(src)}">${escapeHtml(code)}</span>
+        <a class="col-source" href="${attr(home)}" target="_blank" rel="noopener" title="${escapeHtml(src)}">${escapeHtml(code)}</a>
         <time class="col-time" ${d ? `datetime="${d.toISOString()}"` : ""}>${when || ""}</time>
       </li>
     `;
@@ -49,6 +50,43 @@ function renderRail(items) {
 
   list.innerHTML = rows.join("");
 }
+
+/* Map mnemonic → homepage; fallback to URL host root if we don’t know it */
+function sourceHomepage(code, url, src) {
+  const map = {
+    WKRC:      "https://local12.com",
+    FOX19:     "https://www.fox19.com",
+    WCPO:      "https://www.wcpo.com",
+    WLWT:      "https://www.wlwt.com",
+    WVXU:      "https://www.wvxu.org",
+
+    BIZCOUR:   "https://www.bizjournals.com/cincinnati",
+    CINMAG:    "https://www.cincinnatimagazine.com",
+    HERALD:    "https://thecincinnatiherald.com",
+    SIGNAL:    "https://signalcincinnati.org",
+    SOAPBOX:   "https://www.soapboxmedia.com",
+    CATHTEL:   "https://www.thecatholictelegraph.com",
+    ISRAEL:    "https://americanisraelite.com",
+    NEWSREC:   "https://www.newsrecord.org",
+    ENQ:       "https://www.cincinnati.com",
+    NKYTRIB:   "https://www.nkytribune.com",
+
+    OCJ:       "https://ohiocapitaljournal.com",
+    STATEHB:   "https://www.statenews.org",
+    SPECTRUM:  "https://spectrumlocalnews.com/oh/cincinnati",
+
+    CITYBEAT:  "https://www.citybeat.com",
+  };
+
+  if (map[code]) return map[code];
+  // fallback: use the article’s hostname root
+  try { const u = new URL(url); return `${u.protocol}//${u.hostname}`; } catch {}
+  // last resort: try parsing any URL found in source text
+  const m = String(src).match(/https?:\/\/[^\s)]+/i);
+  if (m) return m[0];
+  return "#";
+}
+
 
 /* ---------- headline tightening (no truncation) ---------- */
 function shortenTitle(title, src = "", url = "") {

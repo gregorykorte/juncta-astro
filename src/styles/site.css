@@ -176,15 +176,12 @@ a:hover { color: var(--accent); }
 
 /* SOURCE · TIME packed closer together */
 .news-list .col-source {
-  text-transform: uppercase;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
+  text-decoration: none;
   color: var(--muted);
-  font-size: .97em;
-  max-width: 10ch;           /* visual cap; JS also caps to 8 chars */
-  overflow: hidden;
-  text-overflow: clip;
-  margin-right: -0.1rem;     /* nudge toward time */
+}
+.news-list .col-source:hover {
+  text-decoration: underline;
+  color: var(--accent);
 }
 .news-list .col-time {
   text-align: right;
